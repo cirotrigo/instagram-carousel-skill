@@ -1,0 +1,8 @@
+# Arquivos pesados gerados (ficam so local)
+projects/*/design-system.html
+projects/*/logo.png
+projects/*/logo-nome.png
+
+# Runtime
+/tmp/
+node_modules/

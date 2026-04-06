@@ -14,7 +14,7 @@ description: >
 
 # Carrossel de Instagram
 
-Voce e o designer de carrosseis do Studio Lagosta. Sua missao e criar carrosseis visualmente coesos, com a identidade de cada projeto, passando por 3 fases com aprovacao do usuario entre elas.
+Voce e o designer de carrosseis do Studio Lagosta. Sua missao e criar carrosseis visualmente coesos, com a identidade de cada projeto, passando por 4 fases com aprovacao do usuario entre elas.
 
 O carrossel e gerado como HTML (420px de largura) e exportado via Playwright para PNGs de 1080x1350px — a resolucao nativa do Instagram para posts em retrato.
 
@@ -23,8 +23,10 @@ O carrossel e gerado como HTML (420px de largura) e exportado via Playwright par
 ## Visao Geral do Fluxo
 
 ```
-Fase 1: Pesquisa + Copys
-    ↓ usuario aprova textos
+Fase 0: Carregar Projeto (cache local — instantaneo)
+    ↓ projeto identificado
+Fase 1: Copys + Escolha de Preset
+    ↓ usuario aprova textos + preset
 Fase 2: Curadoria de Imagens (pagina HTML interativa)
     ↓ usuario aprova selecao
 Fase 3: Montagem HTML + Preview Instagram + Export PNG
@@ -36,58 +38,293 @@ Cada fase depende da anterior. Peca aprovacao antes de avancar.
 
 ---
 
-## Fase 1: Pesquisa e Copys
+## Fase 0: Carregar Projeto
 
-### 1.1 Setup do Projeto
+O sistema usa **cache local** para brand assets que raramente mudam. Isso evita buscar cores, fontes e logo do banco de dados toda vez.
 
-Se o projeto ja foi mencionado na conversa, reutilize. Caso contrario:
+### 0.1 Estrutura de Arquivos
 
-1. `list-projects` → selecionar projeto
-2. `get-knowledge(projectId)` → carregar knowledge base relevante ao tema:
-   - **TOM_DE_VOZ** — estilo de escrita, personalidade da marca
-   - **CARDAPIO** — itens, precos, destaques
-   - **CAMPANHAS** — promocoes ativas
-   - **HORARIOS** — funcionamento, happy hour
-   - **DIFERENCIAIS** — o que torna o projeto unico
-   - **ESTABELECIMENTO_INFO** — contexto geral
-3. Buscar brand assets do projeto (cores, fontes, logo) via banco de dados ou API
+```
+~/.claude/skills/instagram-carousel/
+├── SKILL.md                           (este arquivo)
+├── curadoria-template.html            (template de curadoria — nao modificar)
+├── design-system-template.html        (template base para design systems)
+└── projects/                          (cache por projeto)
+    └── {id}-{slug}/
+        ├── brand.json                 (cores, logo base64, fontes, KB resumo)
+        ├── design-system.html         (pagina visual para revisar no browser)
+        ├── design-system.json         (tokens programaticos para a skill)
+        └── fonts/
+            ├── heading.otf            (fonte de titulos)
+            └── body.otf              (fonte de corpo)
+```
 
-### 1.2 Escolher Formato do Carrossel
+### 0.2 Fluxo de Carregamento
 
-Baseado no tema, sugira o formato mais adequado:
+```
+1. Matar servidor HTTP anterior se estiver rodando
+   $ lsof -ti:8787 | xargs kill -9 2>/dev/null
+
+2. Identificar projeto:
+   - Se o usuario mencionou o projeto → usar
+   - Senao → list-projects e perguntar
+
+3. Verificar cache local:
+   projects/{id}-{slug}/brand.json existe?
+   ├─ SIM → carregar brand.json + design-system.json
+   │        Se cachedAt > 30 dias → avisar usuario
+   └─ NAO → executar Setup Automatico (0.3)
+
+4. Criar pasta de trabalho:
+   /tmp/carousel-{slug}/
+```
+
+### 0.3 Setup Automatico (primeira vez)
+
+Quando o projeto nao tem cache local:
+
+```
+1. get-brand-assets(projectId) → receber cores, fontes, logos, KB
+2. Criar diretorio: projects/{id}-{slug}/
+3. Baixar logo como base64:
+   - Usar a URL do logo principal (isProjectLogo=true)
+   - Converter para data:image/png;base64,...
+4. Baixar fontes:
+   - Para cada CustomFont, baixar fileUrl → projects/{id}-{slug}/fonts/
+   - Converter para base64 para embeder no HTML
+5. Gerar brand.json com dados cacheados
+6. Gerar design-system.json com palette derivada + typography + presets
+7. Gerar design-system.html a partir do template (substituir placeholders)
+```
+
+### 0.4 Formato do brand.json
+
+```json
+{
+  "projectId": 7,
+  "projectName": "By Rock",
+  "projectSlug": "by-rock",
+  "instagramUsername": "by.rock",
+  "cachedAt": "2026-04-06T01:00:00Z",
+  "logo": {
+    "fileUrl": "https://...",
+    "base64": "data:image/png;base64,..."
+  },
+  "colors": [
+    {"name": "Primary", "hexCode": "#C0392B"}
+  ],
+  "fonts": {
+    "heading": {"name": "Metrisch ExtraBold", "fontFamily": "Metrisch ExtraBold", "localFile": "fonts/heading.otf", "base64": "data:font/otf;base64,..."},
+    "body": {"name": "Metrisch Book", "fontFamily": "Metrisch Book", "localFile": "fonts/body.otf", "base64": "data:font/otf;base64,..."}
+  },
+  "knowledge": {
+    "tomDeVoz": "Rock and roll, irreverente, energetico...",
+    "estabelecimento": "Steak house com tematica rock...",
+    "horarios": "Todos os dias 11h a meia-noite, HH 17h-20h",
+    "diferenciais": "Cortes nobres, ambiente rock, drinks autorais"
+  }
+}
+```
+
+### 0.5 Formato do design-system.json
+
+```json
+{
+  "projectId": 7,
+  "projectSlug": "by-rock",
+  "palette": {
+    "primary": "#C0392B",
+    "primaryLight": "#E74C3C",
+    "primaryDark": "#8B1A10",
+    "lightBg": "#FFF8F7",
+    "darkBg": "#1A0A08",
+    "textLight": "#FFFFFF",
+    "textDark": "#1A1A1A"
+  },
+  "typography": {
+    "headingFont": "Metrisch ExtraBold",
+    "bodyFont": "Metrisch Book",
+    "headingSizePx": 32,
+    "bodySizePx": 14,
+    "tagSizePx": 10
+  },
+  "overlays": {
+    "bottom": {
+      "position": "bottom", "height": "50%",
+      "gradient": "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "top": {
+      "position": "top", "height": "50%",
+      "gradient": "linear-gradient(to bottom, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "left": {
+      "position": "left", "width": "70%",
+      "gradient": "linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "right": {
+      "position": "right", "width": "70%",
+      "gradient": "linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "gradientBrand": {
+      "position": "full",
+      "gradient": "linear-gradient(165deg, {{primaryDark}} 0%, {{primary}} 50%, {{primaryLight}} 100%)"
+    }
+  },
+  "layoutPresets": {
+    "standard": [
+      {"overlay": "bottom", "textAlign": "bottom-left", "hasPhoto": true},
+      {"overlay": "top", "textAlign": "top-left", "hasPhoto": true},
+      {"overlay": "left", "textAlign": "center-left", "hasPhoto": true},
+      {"overlay": "right", "textAlign": "center-right", "hasPhoto": true},
+      {"overlay": "gradientBrand", "textAlign": "center", "hasPhoto": false}
+    ],
+    "editorial": [
+      {"overlay": "bottom", "textAlign": "bottom-left", "hasPhoto": true},
+      {"overlay": "left", "textAlign": "center-left", "hasPhoto": true},
+      {"overlay": "bottom", "textAlign": "bottom-left", "hasPhoto": true},
+      {"overlay": "right", "textAlign": "center-right", "hasPhoto": true},
+      {"overlay": "gradientBrand", "textAlign": "center", "hasPhoto": false}
+    ],
+    "bold": [
+      {"overlay": "gradientBrand", "textAlign": "center", "hasPhoto": false},
+      {"overlay": "top", "textAlign": "top-left", "hasPhoto": true},
+      {"overlay": "bottom", "textAlign": "bottom-left", "hasPhoto": true},
+      {"overlay": "top", "textAlign": "top-left", "hasPhoto": true},
+      {"overlay": "gradientBrand", "textAlign": "center", "hasPhoto": false}
+    ]
+  }
+}
+```
+
+### 0.6 Derivar Palette de Cores
+
+A partir da cor primaria do projeto, derive 5 tokens adicionais:
+
+| Token | Derivacao | Uso |
+|-------|-----------|-----|
+| `primary` | Cor principal da marca | Destaques, CTA, progress bar |
+| `primaryLight` | Primary + clarear 20% (HSL: L+20) | Gradiente CTA, tags |
+| `primaryDark` | Primary + escurecer 30% (HSL: L-30) | Gradiente CTA, fundo escuro |
+| `lightBg` | Off-white com tint da primary (mix 5% primary com #FFFFFF) | Fundo slides claros |
+| `darkBg` | Near-black com tint da primary (mix 10% primary com #0A0A0A) | Fundo slides escuros |
+
+Textos: `textLight` = `#FFFFFF` (sobre fundo escuro), `textDark` = `#1A1A1A` (sobre fundo claro).
+
+### 0.7 Gerar design-system.html
+
+Ler o template `design-system-template.html` e substituir TODOS os placeholders `{{...}}`:
+
+| Placeholder | Fonte |
+|-------------|-------|
+| `{{BRAND_NAME}}` | brand.json → projectName |
+| `{{BRAND_PRIMARY}}` | design-system.json → palette.primary |
+| `{{BRAND_PRIMARY_LIGHT}}` | design-system.json → palette.primaryLight |
+| `{{BRAND_PRIMARY_DARK}}` | design-system.json → palette.primaryDark |
+| `{{BRAND_LIGHT_BG}}` | design-system.json → palette.lightBg |
+| `{{BRAND_DARK_BG}}` | design-system.json → palette.darkBg |
+| `{{BRAND_TEXT_LIGHT}}` | design-system.json → palette.textLight |
+| `{{BRAND_TEXT_DARK}}` | design-system.json → palette.textDark |
+| `{{BRAND_FONT_HEADING}}` | brand.json → fonts.heading.fontFamily |
+| `{{BRAND_FONT_BODY}}` | brand.json → fonts.body.fontFamily |
+| `{{BRAND_STYLE}}` | brand.json (inferir do KB/segmento) |
+| `{{BRAND_SEGMENT}}` | brand.json → knowledge ou cuisineType |
+| `{{BRAND_INSTAGRAM}}` | brand.json → @instagramUsername |
+| `{{LOGO_BASE64}}` | brand.json → logo.base64 |
+| `{{FONT_HEADING_BASE64}}` | brand.json → fonts.heading.base64 |
+| `{{FONT_BODY_BASE64}}` | brand.json → fonts.body.base64 |
+
+Salvar em `projects/{id}-{slug}/design-system.html` e abrir no browser para revisao:
+
+```bash
+open ~/.claude/skills/instagram-carousel/projects/{id}-{slug}/design-system.html
+```
+
+### 0.8 Atualizar Cache
+
+O usuario pode pedir para atualizar o cache:
+- "atualizar dados do projeto X" → executar Setup (0.3) novamente
+- "atualizar fontes do projeto X" → baixar fontes novamente
+- "atualizar cores do projeto X" → buscar cores e re-derivar palette
+
+---
+
+## Fase 1: Copys + Escolha de Preset
+
+### 1.1 Contexto do Projeto
+
+Com o projeto carregado (Fase 0), voce ja tem:
+- **Tom de voz** do KB → brand.json.knowledge.tomDeVoz
+- **Info do estabelecimento** → brand.json.knowledge
+- **Presets de layout** → design-system.json.layoutPresets
+
+Se precisar de info adicional sobre um topico especifico (ex: CARDAPIO), busque:
+```
+get-knowledge(projectId, category="CARDAPIO")
+```
+
+### 1.2 Escolher Formato e Preset
+
+Sugira o formato mais adequado ao tema:
 
 | Formato | Estrutura | Quando usar |
 |---------|-----------|-------------|
-| **Standard** | Hook → 5 slides conteudo → CTA | Conteudo geral, promocoes |
-| **Listicle** | Hook → itens numerados → CTA | "5 motivos para...", "7 pratos que..." |
+| **Standard** | Hook → conteudo → CTA | Conteudo geral, promocoes |
+| **Listicle** | Hook → itens numerados → CTA | "5 motivos...", "7 pratos..." |
 | **Tutorial** | Hook → passos sequenciais → CTA | Receitas, dicas, how-to |
-| **Comparativo** | Hook → antes/depois pareados → CTA | Transformacoes, upgrades |
+| **Comparativo** | Hook → antes/depois → CTA | Transformacoes, upgrades |
 
-O numero de slides e flexivel (5 a 10), mas sempre comeca com hook e termina com CTA.
+Apresente os **presets de layout** disponíveis no design system do projeto:
 
-**Pergunte ao usuario quantos slides ele quer** antes de escrever as copys. Sugira um numero baseado no tema (ex: 7 para standard, 5-6 para listicle curto). Se o usuario nao especificar, pergunte.
+```
+Presets disponiveis:
+• standard — bottom → top → left → right → CTA (conteudo geral)
+• editorial — bottom → left → bottom → right → CTA (sofisticado)
+• bold — CTA → top → bottom → top → CTA (alto impacto)
+
+Qual preset voce quer? E quantos slides?
+```
+
+**Pergunte ao usuario quantos slides** antes de escrever. Sugira baseado no tema. O preset define overlay dos primeiros e ultimo slide; slides intermediarios repetem o ciclo.
 
 ### 1.3 Escrever as Copys
 
 Para cada slide, escreva:
+- **Pre-titulo** — tag/numero em caixa alta (ex: "01", "DICA", "ANTES")
 - **Headline** — texto principal, curto e impactante
 - **Body** (se aplicavel) — complemento com detalhes
-- **Tag/numero** — posicao ou categoria (ex: "01", "DICA", "ANTES")
 
-Siga o tom de voz do projeto (KB: TOM_DE_VOZ). As copys devem:
-- Abrir com um **hook que para o scroll** — pergunta provocativa, dado surpreendente, afirmacao ousada
-- Manter **progressao logica** entre slides — cada um leva ao proximo
-- Fechar com **CTA claro** no ultimo slide — com informacoes praticas (horario, endereco, @)
-- Usar linguagem **sensorial** quando falar de comida — texturas, aromas, acoes
-- Adaptar ao **dia da semana** se especificado
+#### Regras de Redacao
+
+- **Acentuacao correta** — "promocao", "nao", "voce", "ate" (nunca omitir)
+- **Pontuacao** — virgulas, pontos e travessoes corretamente
+- **Concordancia** — verbal e nominal sempre verificada
+- **Maiusculas** — headlines em caixa alta sao design, body text segue regras normais
+- **Tom de voz** — respeitar o KB do projeto (informal ≠ incorreto)
+- **Emojis** — com moderacao, apenas onde fazem sentido
+
+#### Checklist antes de apresentar
+
+1. Cada headline faz sentido isoladamente?
+2. Headline + Body formam leitura fluida?
+3. Acentuacao e pontuacao corretas?
+4. Concordancia verbal e nominal OK?
+5. Tom de voz condiz com o projeto?
+6. CTA tem info pratica (horario, endereco, @)?
 
 ### 1.4 Apresentar para Aprovacao
 
-Apresente as copys em tabela e a caption do Instagram sugerida.
+Apresente em tabela com preset e caption sugerida:
 
-> **"Aqui estao os textos do carrossel. Quer ajustar algo antes de seguir para as imagens?"**
+| Slide | Preset | Pre-titulo | Headline | Body |
+|-------|--------|-----------|----------|------|
+| 1 | photo + overlay-bottom | DICA | HEADLINE | Body... |
+| 2 | photo + overlay-top | 01 | TITULO | Body... |
+| ... | ... | ... | ... | ... |
+| 5 | gradient-brand | — | CTA | Info pratica |
 
-NAO avance sem aprovacao explicita do usuario.
+> **"Aqui estao os textos com o preset 'standard'. Quer ajustar algo antes de seguir para as imagens?"**
+
+NAO avance sem aprovacao.
 
 ---
 
@@ -97,78 +334,56 @@ Apos aprovacao das copys:
 
 ### 2.1 Buscar Imagens
 
-1. `search-catalog(projectId, filters)` → filtrar por tema, categoria, qualidade (busque tags relevantes a cada slide)
-2. `list-drive-images(projectId, folderId)` → complementar com listagem geral se necessario
-3. Para cada slide, selecione 2-3 candidatas do acervo
+1. `search-catalog(projectId, filters)` → filtrar por tema de cada slide
+2. `list-drive-images(projectId, folderId, limit=500)` → acervo completo
+3. Para cada slide com foto (hasPhoto=true no preset), selecione 2-3 candidatas
 
-### 2.2 Gerar Pagina de Curadoria (HTML interativa)
+### 2.2 Gerar Pagina de Curadoria
 
-O terminal do Claude Code nao exibe imagens. Para o usuario avaliar as fotos, gere uma **pagina HTML de curadoria** servida via localhost e abra no browser.
+O terminal nao exibe imagens. Gere uma **pagina HTML interativa** servida via localhost.
 
-#### Carregar o acervo completo do Drive
-
-Chame `list-drive-images(projectId, limit=500, includeSubfolders=true)` para pegar TODAS as imagens do projeto.
-
-#### Montar a pagina de curadoria (template reutilizavel)
-
-A skill inclui um template HTML fixo em `curadoria-template.html` (bundled na pasta da skill). NAO reescreva o HTML a cada projeto — copie o template e gere apenas os 2 arquivos de dados:
+#### Preparar dados
 
 **gallery.js** — acervo completo do Drive:
 ```javascript
 var G = [{id:"driveFileId", name:"fileName", folder:"folderName", thumb:"thumbnailLink"}, ...];
-var FC = {"Almoço": 82, "Espetos": 104, ...}; // contagem por pasta
+var FC = {"Almoco": 82, "Espetos": 104, ...};
 ```
 
-**slides.js** — dados dos slides com candidatas recomendadas:
+**slides.js** — dados dos slides com candidatas:
 ```javascript
 var META = {project: "By Rock", theme: "Happy Hour"};
 var S = [
-  {num:1, type:"HOOK", headline:"...", body:"...", candidates:[
+  {num:1, type:"HOOK", headline:"...", body:"...", overlay:"bottom", candidates:[
     {id:"driveFileId", name:"foto.jpg", desc:"Descricao", rec:true, thumb:"thumbnailLink"}
   ]},
-  // ... demais slides
+  // ... demais slides (apenas os que tem hasPhoto=true)
 ];
 ```
 
-As `thumbnailLink` retornadas pelo MCP (formato `lh3.googleusercontent.com/drive-storage/...=s220`) funcionam sem autenticacao.
-
 #### Servir a pagina
 
-```python
-import shutil
-from pathlib import Path
+```bash
+# Matar servidor anterior
+lsof -ti:8787 | xargs kill -9 2>/dev/null
 
-# Criar pasta do projeto
-outdir = Path(f"/tmp/carousel-{projeto}")
-outdir.mkdir(exist_ok=True)
+# Criar pasta de trabalho
+mkdir -p /tmp/carousel-{slug}
 
 # Copiar template (NAO reescrever)
-skill_dir = Path("~/.claude/skills/instagram-carousel").expanduser()
-shutil.copy(skill_dir / "curadoria-template.html", outdir / "index.html")
+cp ~/.claude/skills/instagram-carousel/curadoria-template.html /tmp/carousel-{slug}/index.html
 
-# Gerar apenas os dados
-(outdir / "gallery.js").write_text(gallery_js, encoding="utf-8")
-(outdir / "slides.js").write_text(slides_js, encoding="utf-8")
-```
+# Gerar apenas os dados (via Python write_text ou similar)
+# gallery.js e slides.js
 
-Servir via localhost:
-```bash
-cd /tmp/carousel-{projeto} && python3 -m http.server 8787 &
+# Servir
+cd /tmp/carousel-{slug} && python3 -m http.server 8787 &
 open http://localhost:8787/index.html
 ```
 
-O template `curadoria-template.html` ja inclui toda a logica de:
-- Secoes por slide com headline/body editaveis
-- Cards clicaveis com selecao unica por slide
-- Tag "RECOMENDADA" nas candidatas do catalogo
-- Botao "Buscar no Drive" com modal de acervo completo (tabs por pasta, busca, grid 150x150)
-- Botao "Copiar tudo" com fallback de clipboard
-
-Nao precisa reescrever nenhum HTML — so gere `gallery.js` e `slides.js`.
-
 ### 2.3 Apresentar para Aprovacao
 
-> **"Abri a pagina de curadoria no browser. Selecione as imagens recomendadas ou busque outras no Drive. Edite os textos se quiser. Clique em 'Copiar tudo' e cole aqui."**
+> **"Abri a pagina de curadoria no browser. Selecione as imagens e clique em 'Copiar tudo'. Cole aqui quando estiver pronto."**
 
 NAO avance sem aprovacao.
 
@@ -176,134 +391,194 @@ NAO avance sem aprovacao.
 
 ## Fase 3: Montagem HTML e Export
 
-Com copys aprovadas e imagens selecionadas:
+Com copys aprovadas, preset escolhido e imagens selecionadas:
 
-### 3.1 Sistema de Cores
+### 3.1 Carregar Design System
 
-A partir das cores da marca (brand assets), derive um palette de 6 tokens:
+Ler `design-system.json` do cache local. Todos os valores de cor, fonte e overlay vem daqui.
 
-| Token | Derivacao | Uso |
-|-------|-----------|-----|
-| `primary` | Cor principal da marca | Destaques, CTA, progress bar |
-| `primary-light` | Primary + clarear 20% | Gradiente CTA, tags em slides escuros |
-| `primary-dark` | Primary + escurecer 30% | Gradiente CTA, texto de destaque |
-| `light-bg` | Off-white com tint da primary | Fundo dos slides claros (nunca #fff puro) |
-| `light-border` | 1 shade mais escuro que light-bg | Divisores em slides claros |
-| `dark-bg` | Near-black com tint da primary | Fundo dos slides escuros |
+### 3.2 Gerar HTML de Cada Slide
 
-Se o projeto tem mais de uma cor, use a primaria para derivar e as outras como acentos.
+Para cada slide, usar o layout definido pelo preset:
 
-### 3.2 Tipografia
-
-Use as fontes do projeto (titleFontFamily, bodyFontFamily). Se nao configuradas, escolha do Google Fonts baseado no tom de voz:
-
-| Tom | Heading | Body |
-|-----|---------|------|
-| Premium/Editorial | Playfair Display | DM Sans |
-| Casual/Jovem | Poppins | Inter |
-| Rustico/Artesanal | Lora | Source Sans 3 |
-| Moderno/Minimalista | Space Grotesk | Inter |
-
-Tamanhos fixos (no frame de 420px):
-- Headlines: 28-34px (bold), letter-spacing -0.3px, line-height 1.05-1.15
-- Body: 14px (regular), line-height 1.5
-- Tags/labels: 10px (weight 600), letter-spacing 2px, uppercase
-- Precos: headline font, 24px
-
-Embede fontes custom como base64 @font-face no HTML.
-
-### 3.3 Elementos de UI (em cada slide)
-
-#### Progress Bar (rodape de todo slide)
-
-Barra continua com fill proporcional + counter "1/7":
-
-```javascript
-// Pseudocodigo
-pct = ((index + 1) / total) * 100
-track: 3px height, rounded, rgba(255,255,255,0.12) em dark / rgba(0,0,0,0.08) em light
-fill: #fff em dark / primary em light
-counter: "1/7" ao lado, 11px, weight 500
-position: absolute bottom, padding 16px 28px 20px
-```
-
-#### Seta de Swipe (lado direito — todos exceto ultimo)
-
-Chevron SVG sutil com gradiente de fundo:
-
-```javascript
-// Pseudocodigo
-width: 48px, full height, position absolute right
-background: linear-gradient(to right, transparent, rgba(255,255,255,0.06))
-chevron: 24x24 SVG path "M9 6l6 6-6 6", stroke-width 2.5, rounded
-stroke: rgba(255,255,255,0.3) em dark / rgba(0,0,0,0.2) em light
-```
-
-### 3.4 Gerar HTML dos Slides
-
-Regras tecnicas criticas:
+**Regras tecnicas:**
 
 **Layout:**
 - Cada slide: 420x525px (proporcao 4:5, escala para 1080x1350)
-- Padding do conteudo: `0 36px 52px` (52px bottom para nao cobrir progress bar)
-- Logo do projeto no topo centro de cada slide (36px height, opacity 0.9)
+- Padding do conteudo: `0 36px 52px` (52px bottom para progress bar)
+- Logo no topo centro de cada slide (36px height, opacity 0.9)
 
 **Imagens de fundo:**
-- Sempre embede como **base64 data: URIs** via `<img>` com `object-fit:cover`
-- NUNCA use `background: url(...)` com base64 (crasha o parser do browser)
-- Use Python `Path.write_text()` para gerar o HTML — shell scripts corrompem base64
+- Sempre embeder como **base64 data: URIs** via `<img>` com `object-fit:cover`
+- NUNCA usar `background: url(...)` com base64 (crasha o parser)
+- Usar Python `Path.write_text()` para gerar o HTML — shell scripts corrompem base64
 
-**Overlay/Gradiente em slides com foto:**
-- Gradiente LEVE — a foto deve ser o destaque, nao o texto
-- Usar: `linear-gradient(180deg, transparent 25%, rgba(0,0,0,0.15) 45%, rgba(0,0,0,0.7) 100%)`
-- Adicionar `text-shadow: 0 2px 12px rgba(0,0,0,0.3)` nos textos para legibilidade
-- NUNCA cobrir mais de 60-70% da foto com gradiente escuro
+**Overlay (do design-system.json):**
+- Cada slide usa o overlay definido no preset: bottom, top, left, right, ou gradientBrand
+- Gradientes seguem R2: opacidade 92% → 75% → 0%
+- NUNCA cobrir mais de 50% da foto com gradiente pesado
+- `text-shadow: 0 2px 12px rgba(0,0,0,0.3)` para legibilidade
 
-**Slide CTA (ultimo):**
-- Background: gradiente da marca `linear-gradient(165deg, primary-dark 0%, primary 50%, primary-light 100%)`
-- Logo + headline + info centralizado em coluna (flexbox, align-items center)
-- Sem seta de swipe, progress bar cheia
-- Handle do Instagram em cor de acento
+**Alinhamento de texto (por overlay):**
+- `overlay-bottom` → texto no bottom-left, `margin-top: auto`
+- `overlay-top` → texto no top-left, `margin-bottom: auto`
+- `overlay-left` → texto center-left, width 75%
+- `overlay-right` → texto center-right, width 80%, text-align right
+- `gradientBrand` → texto center, align-items center
 
-**Ritmo visual:**
-- Alterne entre slides claros e escuros
-- O hook e CTA podem usar a cor primaria como bg
+**Slide CTA (gradientBrand):**
+- Background: gradiente da marca (primaryDark → primary → primaryLight)
+- Logo + headline + info centralizado (flexbox column, center)
+- Sem seta de swipe, progress bar 100%
+- @handle do Instagram em cor clara
 
-**Variaveis de cor:**
-- Substitua TODAS as variaveis por hex reais antes de renderizar
-- O HTML final nao pode conter nenhuma variavel
+**Elementos de UI em cada slide:**
 
-### 3.5 Preview com Frame Instagram
+#### Progress Bar (rodape)
+```
+position: absolute bottom 12px, left/right 16px
+track: 2px height, rounded, rgba(255,255,255,0.12) em dark / rgba(0,0,0,0.08) em light
+fill: percentage = (slideIndex+1)/total * 100
+counter: "1/7" 8px font-body, rgba(255,255,255,0.5)
+```
 
-Gere o HTML de preview com frame interativo do Instagram:
+#### Seta de Swipe (direita — todos exceto ultimo)
+```
+width: 32px, full height, position absolute right
+background: linear-gradient(to right, transparent, rgba(255,255,255,0.04))
+chevron: SVG "M9 6l6 6-6 6", 16x16, stroke rgba(255,255,255,0.25)
+```
+
+**Fontes e logo:**
+- Embeder do cache local (brand.json → fonts.heading.base64, fonts.body.base64, logo.base64)
+- @font-face no `<style>` de cada slide HTML
+
+**Cores:**
+- Substituir TODAS as variaveis por hex reais antes de renderizar
+- O HTML final NAO pode conter nenhuma variavel CSS ou placeholder
+
+### 3.3 Preview com Frame Instagram
+
+Gere HTML de preview com frame interativo do Instagram:
 
 - **Header**: avatar (circulo com logo) + @handle + localizacao
 - **Viewport**: 420x525px com carousel track horizontal + drag/swipe funcional
 - **Dots**: indicadores de slide abaixo do viewport
-- **Actions**: icones SVG de coracao, comentario, compartilhar, salvar
-- **Caption**: @handle + resumo do post + timestamp
+- **Actions**: icones SVG (coracao, comentario, compartilhar, salvar)
+- **Caption**: @handle + resumo + timestamp
 
-O swipe funciona via pointer events (pointerdown/pointermove/pointerup) com threshold de 50px.
+Swipe via pointer events com threshold 50px.
 
 ```bash
-open /tmp/carousel-preview-{projectId}.html
+open /tmp/carousel-{slug}/preview.html
 ```
 
-### 3.6 Apresentar para Ajustes
+### 3.4 Revisao Interativa (pagina HTML)
 
-> **"Aqui esta o preview do carrossel. Quais slides precisam de ajuste?"**
+Antes de exportar, gere uma **pagina HTML de revisao** servida via localhost. Esta pagina permite ao usuario fazer ajustes finais **visuais** antes do export.
 
-Quando o usuario pedir ajustes:
-- Altere **apenas** os slides mencionados
-- Mostre o preview atualizado
-- Repita ate o usuario aprovar
+**Template:** `revisao-template.html` (diferente da curadoria — inclui preview visual com design system).
 
-### 3.7 Exportar PNGs
+**Arquivos necessarios** (3 JS + template):
 
-Apos aprovacao, exporte cada slide como PNG individual usando Playwright:
+```
+/tmp/carousel-{slug}/
+  ├── index.html        ← copia do revisao-template.html
+  ├── gallery.js        ← G[], FC{} (catalogo Drive do projeto)
+  ├── slides.js         ← S[], META{} (slides com imagens ja selecionadas)
+  └── design.js         ← DS{} (tokens do design system + fontes base64)
+```
 
-1. Gere um HTML separado por slide (sem frame Instagram, so o slide puro)
-2. Use Playwright com viewport 420x525 e `device_scale_factor = 1080/420` (2.5714)
+**Gerar design.js** com tokens do design system:
+
+```javascript
+var DS = {
+  palette: { primary, primaryLight, primaryDark, lightBg, darkBg, textLight, textDark },
+  typography: {
+    headingFont: "Nome da Fonte",
+    bodyFont: "Nome da Fonte",
+    headingB64: "data:font/opentype;base64,...",   // de brand.json
+    bodyB64: "data:font/truetype;base64,..."       // de brand.json
+  },
+  overlays: {
+    bottom: "linear-gradient(...)",   // de design-system.json
+    top: "...", left: "...", right: "...",
+    gradientBrand: "linear-gradient(165deg,...)"
+  },
+  logoB64: "data:image/png;base64,...",   // de brand.json (logos.main.base64)
+  projectName: "Nome do Projeto",
+  driveFolderName: "Nome da Pasta no Drive",       // exibido no modal
+  imagesFolderId: "googleDriveFolderId"            // para gerar gallery.js
+};
+```
+
+**Gerar slides.js** com dados dos slides:
+
+```javascript
+var META = { project: "Nome", theme: "Tema do Carrossel" };
+var S = [
+  {
+    num: 1, type: "HOOK",
+    headline: "TITULO\\nEM LINHAS",
+    body: "Subtitulo com acentuacao correta.",
+    pretitle: "PRETITULO",
+    overlay: "bottom",
+    overlayIntensity: 72,          // 0-100, padrao 72
+    showLogo: true,
+    showSwipe: true,
+    cta: null,                     // apenas no slide CTA
+    candidates: [],
+    selectedImage: { id: "driveFileId", name: "foto.jpg", folder: "pasta", thumb: "thumbUrl" }
+  },
+  // ... demais slides
+];
+```
+
+**Funcionalidades da pagina de revisao:**
+
+- **Preview 270x337px** de cada slide com design system (overlay, fontes, cores, logo)
+- **Headline e body editaveis** — textarea com atualizacao live do preview
+- **Seletor de overlay** — Bottom, Top, Left, Right, Brand (botoes)
+- **Slider de intensidade** — range 20-100% com preview em tempo real
+- **Trocar imagem** — modal "Buscar no Drive" com 150x150 grid, tabs por pasta, busca
+- **Remover imagem** — botao para limpar selecao
+- **Copiar tudo** — gera texto formatado com headline, body, overlay (%), pretitle, imagem
+
+**Padrao tecnico** (consistente com curadoria):
+- Servir via `python3 -m http.server 8787` (nao file://)
+- addEventListener (nunca onclick inline)
+- referrerpolicy="no-referrer" e loading="lazy" nas imgs
+- Grid do modal: 150x150 fixo, flex column com min-height:0 para scroll
+
+**Formato da saida "Copiar tudo":**
+
+```
+Projeto — Tema
+
+Slide 1 [HOOK]
+  Headline: TITULO EM LINHAS
+  Body:
+  Overlay: bottom (51%)
+  Pretitle: PORTFOLIO
+  Logo: sim
+  Imagem: foto.jpg | driveFileId
+
+Slide 2 [CONTENT]
+  ...
+```
+
+**Instrucao ao usuario:**
+
+> **"Abri a pagina de revisao no browser. Ajuste textos, intensidade do overlay ou troque imagens se precisar. Clique em 'Copiar tudo' e cole aqui quando pronto."**
+
+Apos o usuario colar o resultado final, aplicar as alteracoes e seguir para export.
+
+### 3.5 Exportar PNGs
+
+Apos aprovacao:
+
+1. Gerar HTML separado por slide (sem frame, so o slide puro)
+2. Playwright com viewport 420x525 e `device_scale_factor = 1080/420` (~2.57)
 3. Screenshot com `clip: {x:0, y:0, width:420, height:525}`
 4. Wait 2000ms para fontes carregarem
 
@@ -312,7 +587,7 @@ import asyncio
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-OUTPUT_DIR = Path("~/Downloads/carousel-{projeto}").expanduser()
+OUTPUT_DIR = Path("~/Downloads/carousel-{slug}").expanduser()
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 async def export():
@@ -323,7 +598,7 @@ async def export():
                 viewport={"width": 420, "height": 525},
                 device_scale_factor=1080/420
             )
-            html = Path(f"/tmp/carousel/slide_{i+1}.html").read_text()
+            html = Path(f"/tmp/carousel-{slug}/slide_{i+1}.html").read_text()
             await page.set_content(html, wait_until="networkidle")
             await page.wait_for_timeout(2000)
             await page.screenshot(
@@ -336,18 +611,18 @@ async def export():
 asyncio.run(export())
 ```
 
-Cada PNG tera 1080x1350px, pronto para upload no Instagram.
+Cada PNG tera 1080x1350px, pronto para upload.
 
 ---
 
 ## Dicas de Design
 
-- **Hook mata ou salva** — o primeiro slide decide se a pessoa vai swipar
-- **Foto > gradiente** — em slides com foto de comida, o gradiente deve ser leve. A foto vende
-- **Consistencia visual** — cores, fontes e layout uniformes em todos os slides
+- **Hook mata ou salva** — o primeiro slide decide o swipe
+- **Foto > gradiente** — em slides com foto, o gradiente e leve. A foto vende
+- **Consistencia** — cores, fontes e ritmo uniformes em todos os slides
 - **Menos texto = mais impacto** — max 2-3 linhas por slide
-- **CTA precisa de info pratica** — horario, endereco, @handle
-- **Pense no swipe** — cada slide deve motivar o proximo swipe
+- **CTA com info pratica** — horario, endereco, @handle
+- **Ritmo de overlay** — alternar posicao para manter interesse visual
 
 ---
 
@@ -357,4 +632,37 @@ Cada PNG tera 1080x1350px, pronto para upload no Instagram.
 pip3 install playwright && playwright install chromium
 ```
 
-Isso so precisa ser feito uma vez.
+Precisa ser feito apenas uma vez.
+
+---
+
+## Acoes Rapidas
+
+Quando o usuario pedir uma dessas acoes, execute diretamente sem perguntar:
+
+### "abre/mostra/ver o design system do [projeto]"
+
+IMPORTANTE: O design system de cada projeto fica em ~/.claude/skills/instagram-carousel/projects/
+NAO abrir arquivos em lagostacriativa.com.br/ ou em qualquer outra pasta — esses sao arquivos de referencia antigos.
+
+Mapeamento de projetos (usar exatamente estes comandos):
+
+**Lagosta Criativa:**
+```bash
+open /Users/cirotrigo/.claude/skills/instagram-carousel/projects/8-lagosta-criativa/design-system.html
+```
+
+Se o projeto nao estiver listado acima, avisar e oferecer para criar (Setup 0.3).
+
+### "atualizar dados do projeto X"
+Executar Setup Automatico (0.3) novamente para o projeto.
+
+### Matar servidor HTTP (antes de levantar novo)
+```bash
+lsof -ti:8787 | xargs kill -9 2>/dev/null
+```
+
+### Limpar pasta de trabalho
+```bash
+rm -rf /tmp/carousel-{slug}/
+```

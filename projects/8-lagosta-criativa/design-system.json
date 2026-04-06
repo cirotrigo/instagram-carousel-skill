@@ -1,0 +1,129 @@
+{
+  "projectId": 8,
+  "projectSlug": "lagosta-criativa",
+  "palette": {
+    "primary": "#FA5701",
+    "primaryLight": "#fe9862",
+    "primaryDark": "#612100",
+    "lightBg": "#fef6f2",
+    "darkBg": "#221109",
+    "textLight": "#FFFFFF",
+    "textDark": "#1A1A1A"
+  },
+  "typography": {
+    "headingFont": "Coolvetica Hv Comp",
+    "bodyFont": "YanoneKaffeesatz Regular",
+    "headingSizePx": 32,
+    "bodySizePx": 14,
+    "tagSizePx": 10
+  },
+  "overlays": {
+    "bottom": {
+      "position": "bottom",
+      "height": "50%",
+      "gradient": "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "top": {
+      "position": "top",
+      "height": "50%",
+      "gradient": "linear-gradient(to bottom, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "left": {
+      "position": "left",
+      "width": "70%",
+      "gradient": "linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "right": {
+      "position": "right",
+      "width": "70%",
+      "gradient": "linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 50%, rgba(0,0,0,0) 100%)"
+    },
+    "gradientBrand": {
+      "position": "full",
+      "gradient": "linear-gradient(165deg, #612100 0%, #FA5701 50%, #fe9862 100%)"
+    }
+  },
+  "layoutPresets": {
+    "standard": [
+      {
+        "overlay": "bottom",
+        "textAlign": "bottom-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "top",
+        "textAlign": "top-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "left",
+        "textAlign": "center-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "right",
+        "textAlign": "center-right",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "gradientBrand",
+        "textAlign": "center",
+        "hasPhoto": false
+      }
+    ],
+    "editorial": [
+      {
+        "overlay": "bottom",
+        "textAlign": "bottom-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "left",
+        "textAlign": "center-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "bottom",
+        "textAlign": "bottom-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "right",
+        "textAlign": "center-right",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "gradientBrand",
+        "textAlign": "center",
+        "hasPhoto": false
+      }
+    ],
+    "bold": [
+      {
+        "overlay": "gradientBrand",
+        "textAlign": "center",
+        "hasPhoto": false
+      },
+      {
+        "overlay": "top",
+        "textAlign": "top-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "bottom",
+        "textAlign": "bottom-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "top",
+        "textAlign": "top-left",
+        "hasPhoto": true
+      },
+      {
+        "overlay": "gradientBrand",
+        "textAlign": "center",
+        "hasPhoto": false
+      }
+    ]
+  }
+}
