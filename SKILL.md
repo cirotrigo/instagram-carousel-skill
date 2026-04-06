@@ -101,32 +101,70 @@ Apos aprovacao das copys:
 
 ### 2.2 Gerar Pagina de Curadoria (HTML interativa)
 
-O terminal do Claude Code nao exibe imagens. Para o usuario avaliar as fotos, gere uma **pagina HTML de curadoria** usando Python e abra no browser.
+O terminal do Claude Code nao exibe imagens. Para o usuario avaliar as fotos, gere uma **pagina HTML de curadoria** servida via localhost e abra no browser.
 
-Use `get-image-thumbnail(fileId)` para obter a URL do thumbnail de cada imagem candidata.
+#### Carregar o acervo completo do Drive
 
-A pagina de curadoria deve ter:
+Chame `list-drive-images(projectId, limit=500, includeSubfolders=true)` para pegar TODAS as imagens do projeto. Salve como `gallery.js`:
+
+```javascript
+// gallery.js
+var G = [{id:"driveFileId", name:"fileName", folder:"folderName", thumb:"thumbnailLink"}, ...];
+var FC = {"Almoço": 82, "Espetos": 104, ...}; // contagem por pasta
+```
+
+As `thumbnailLink` retornadas pelo MCP (formato `lh3.googleusercontent.com/drive-storage/...=s220`) funcionam sem autenticacao.
+
+#### Estrutura da pagina de curadoria
+
+Dois arquivos: `index.html` + `gallery.js`. Servir via `python3 -m http.server` (nao file://).
+
+A pagina deve ter:
 - **Secao por slide** com headline e body editaveis (inputs)
-- **Cards clicaveis** com thumbnail de cada candidata (selecao unica por slide — clicar numa desmarca a anterior)
-- **Tag "RECOMENDADA"** na imagem sugerida
-- **Feedback visual claro** quando selecionada (outline verde, badge "SELECIONADA", fundo diferente)
-- **Botao "Copiar tudo"** fixo no rodape que gera texto formatado com textos editados + imagens escolhidas + driveFileIds
-- **Modal com textarea** como fallback de copia (file:// nao suporta clipboard API)
+- **Cards clicaveis** com thumbnail de cada candidata (selecao unica por slide)
+- **Tag "RECOMENDADA"** na imagem sugerida pelo catalogo
+- **Botao "Buscar no Drive"** em cada slide que abre modal com o acervo completo
+- **Botao "Copiar tudo"** fixo no rodape
 
-Regras tecnicas importantes para o HTML de curadoria:
-- NUNCA use `onclick` inline — `file://` bloqueia JavaScript inline em muitos browsers
-- Use `addEventListener` em todos os handlers
-- Use `pointer-events: none` nos filhos dos cards (img, text) para garantir que o clique vai pro card pai
-- Use `document.execCommand("copy")` como fallback alem de `navigator.clipboard`
+#### Modal de navegacao do Drive (acervo completo)
 
-Depois abra no browser:
+O modal permite navegar TODAS as fotos do projeto, organizadas por pasta:
+
+**Estrutura HTML do modal (testada e validada):**
+```html
+<div class="modal" style="display:flex; flex-direction:column; height:90vh; overflow:hidden;">
+  <div class="modal-head" style="flex-shrink:0;">Titulo + botao fechar</div>
+  <div class="modal-tabs" style="flex-shrink:0;">Tabs de pasta + busca</div>
+  <div class="grid-scroll" style="flex:1; overflow-y:auto; min-height:0;">
+    <div class="grid" style="display:grid; grid-template-columns:repeat(auto-fill,150px); gap:10px; justify-content:center;">
+      <!-- cards 150x150 -->
+    </div>
+  </div>
+</div>
+```
+
+**Regras criticas do modal:**
+- O modal DEVE usar `display:flex` + `flex-direction:column`
+- O container do grid DEVE ter `flex:1`, `min-height:0` e `overflow-y:auto` — sem isso o scroll nao funciona
+- Cards do grid devem ter tamanho FIXO (150x150px) — nao usar `1fr` que muda proporcao com diferentes quantidades de fotos
+- Tabs mostram nome da pasta + contagem entre parenteses
+- Busca filtra por nome de arquivo
+- Ao clicar numa foto, seleciona pro slide ativo e fecha o modal
+- Adicionar `referrerpolicy="no-referrer"` e `loading="lazy"` nas `<img>` tags
+
+**Regras tecnicas gerais:**
+- NUNCA use `onclick` inline — use `addEventListener`
+- Servir via `python3 -m http.server` (nao file://) para evitar problemas de CORS e referrer
+- Use `document.execCommand("copy")` como fallback para clipboard
+
 ```bash
-open /tmp/carousel-curadoria.html
+cd /tmp/carousel-{projeto} && python3 -m http.server 8787 &
+open http://localhost:8787/index.html
 ```
 
 ### 2.3 Apresentar para Aprovacao
 
-> **"Abri a pagina de curadoria no browser. Selecione as imagens, edite os textos se quiser, e clique em 'Copiar tudo'. Depois cole aqui."**
+> **"Abri a pagina de curadoria no browser. Selecione as imagens recomendadas ou busque outras no Drive. Edite os textos se quiser. Clique em 'Copiar tudo' e cole aqui."**
 
 NAO avance sem aprovacao.
 
