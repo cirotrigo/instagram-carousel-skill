@@ -65,6 +65,8 @@ Baseado no tema, sugira o formato mais adequado:
 
 O numero de slides e flexivel (5 a 10), mas sempre comeca com hook e termina com CTA.
 
+**Pergunte ao usuario quantos slides ele quer** antes de escrever as copys. Sugira um numero baseado no tema (ex: 7 para standard, 5-6 para listicle curto). Se o usuario nao especificar, pergunte.
+
 ### 1.3 Escrever as Copys
 
 Para cada slide, escreva:
@@ -105,62 +107,64 @@ O terminal do Claude Code nao exibe imagens. Para o usuario avaliar as fotos, ge
 
 #### Carregar o acervo completo do Drive
 
-Chame `list-drive-images(projectId, limit=500, includeSubfolders=true)` para pegar TODAS as imagens do projeto. Salve como `gallery.js`:
+Chame `list-drive-images(projectId, limit=500, includeSubfolders=true)` para pegar TODAS as imagens do projeto.
 
+#### Montar a pagina de curadoria (template reutilizavel)
+
+A skill inclui um template HTML fixo em `curadoria-template.html` (bundled na pasta da skill). NAO reescreva o HTML a cada projeto — copie o template e gere apenas os 2 arquivos de dados:
+
+**gallery.js** — acervo completo do Drive:
 ```javascript
-// gallery.js
 var G = [{id:"driveFileId", name:"fileName", folder:"folderName", thumb:"thumbnailLink"}, ...];
 var FC = {"Almoço": 82, "Espetos": 104, ...}; // contagem por pasta
 ```
 
-As `thumbnailLink` retornadas pelo MCP (formato `lh3.googleusercontent.com/drive-storage/...=s220`) funcionam sem autenticacao.
-
-#### Estrutura da pagina de curadoria
-
-Dois arquivos: `index.html` + `gallery.js`. Servir via `python3 -m http.server` (nao file://).
-
-A pagina deve ter:
-- **Secao por slide** com headline e body editaveis (inputs)
-- **Cards clicaveis** com thumbnail de cada candidata (selecao unica por slide)
-- **Tag "RECOMENDADA"** na imagem sugerida pelo catalogo
-- **Botao "Buscar no Drive"** em cada slide que abre modal com o acervo completo
-- **Botao "Copiar tudo"** fixo no rodape
-
-#### Modal de navegacao do Drive (acervo completo)
-
-O modal permite navegar TODAS as fotos do projeto, organizadas por pasta:
-
-**Estrutura HTML do modal (testada e validada):**
-```html
-<div class="modal" style="display:flex; flex-direction:column; height:90vh; overflow:hidden;">
-  <div class="modal-head" style="flex-shrink:0;">Titulo + botao fechar</div>
-  <div class="modal-tabs" style="flex-shrink:0;">Tabs de pasta + busca</div>
-  <div class="grid-scroll" style="flex:1; overflow-y:auto; min-height:0;">
-    <div class="grid" style="display:grid; grid-template-columns:repeat(auto-fill,150px); gap:10px; justify-content:center;">
-      <!-- cards 150x150 -->
-    </div>
-  </div>
-</div>
+**slides.js** — dados dos slides com candidatas recomendadas:
+```javascript
+var META = {project: "By Rock", theme: "Happy Hour"};
+var S = [
+  {num:1, type:"HOOK", headline:"...", body:"...", candidates:[
+    {id:"driveFileId", name:"foto.jpg", desc:"Descricao", rec:true, thumb:"thumbnailLink"}
+  ]},
+  // ... demais slides
+];
 ```
 
-**Regras criticas do modal:**
-- O modal DEVE usar `display:flex` + `flex-direction:column`
-- O container do grid DEVE ter `flex:1`, `min-height:0` e `overflow-y:auto` — sem isso o scroll nao funciona
-- Cards do grid devem ter tamanho FIXO (150x150px) — nao usar `1fr` que muda proporcao com diferentes quantidades de fotos
-- Tabs mostram nome da pasta + contagem entre parenteses
-- Busca filtra por nome de arquivo
-- Ao clicar numa foto, seleciona pro slide ativo e fecha o modal
-- Adicionar `referrerpolicy="no-referrer"` e `loading="lazy"` nas `<img>` tags
+As `thumbnailLink` retornadas pelo MCP (formato `lh3.googleusercontent.com/drive-storage/...=s220`) funcionam sem autenticacao.
 
-**Regras tecnicas gerais:**
-- NUNCA use `onclick` inline — use `addEventListener`
-- Servir via `python3 -m http.server` (nao file://) para evitar problemas de CORS e referrer
-- Use `document.execCommand("copy")` como fallback para clipboard
+#### Servir a pagina
 
+```python
+import shutil
+from pathlib import Path
+
+# Criar pasta do projeto
+outdir = Path(f"/tmp/carousel-{projeto}")
+outdir.mkdir(exist_ok=True)
+
+# Copiar template (NAO reescrever)
+skill_dir = Path("~/.claude/skills/instagram-carousel").expanduser()
+shutil.copy(skill_dir / "curadoria-template.html", outdir / "index.html")
+
+# Gerar apenas os dados
+(outdir / "gallery.js").write_text(gallery_js, encoding="utf-8")
+(outdir / "slides.js").write_text(slides_js, encoding="utf-8")
+```
+
+Servir via localhost:
 ```bash
 cd /tmp/carousel-{projeto} && python3 -m http.server 8787 &
 open http://localhost:8787/index.html
 ```
+
+O template `curadoria-template.html` ja inclui toda a logica de:
+- Secoes por slide com headline/body editaveis
+- Cards clicaveis com selecao unica por slide
+- Tag "RECOMENDADA" nas candidatas do catalogo
+- Botao "Buscar no Drive" com modal de acervo completo (tabs por pasta, busca, grid 150x150)
+- Botao "Copiar tudo" com fallback de clipboard
+
+Nao precisa reescrever nenhum HTML — so gere `gallery.js` e `slides.js`.
 
 ### 2.3 Apresentar para Aprovacao
 
